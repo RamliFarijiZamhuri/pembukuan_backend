@@ -1,68 +1,49 @@
-// backend/api/index.js
+// backend/api/index.js (VERSI DEBUGGING SANGAT MINIMAL - TANPA DB)
 
-// Import library yang diperlukan
-const serverless = require('serverless-http'); // Untuk membungkus aplikasi Express
-const express = require('express');
-const dotenv = require('dotenv');
-const cors = require('cors');
+const serverless = require('serverless-http');
+const dotenv = require('dotenv'); // Tetap ada untuk variabel lingkungan lain
+const express = require('express'); // Import express di sini
 
-// Import modul-modul aplikasi Express Anda dari folder src/
-// PASTIKAN PATH RELATIF INI BENAR!
-// Dari 'api/index.js', kita perlu naik satu level (..) untuk masuk ke folder 'src'
-const connectDB = require('../src/config/db');
-const authRoutes = require('../src/routes/authRoutes');
-const transactionRoutes = require('../src/routes/transactionRoutes');
-const categoryRoutes = require('../src/routes/categoryRoutes');
-
-// Memuat variabel lingkungan dari file .env (hanya untuk pengembangan lokal)
-// Di Vercel, variabel ini akan diatur melalui dashboard Vercel.
 dotenv.config();
 
-// Menghubungkan ke database MongoDB
-// Pastikan MONGO_URI tersedia sebagai Environment Variable di Vercel
-connectDB();
+// --- DEBUGGING LOG ---
+console.log('DEBUG_API_NO_DB: Starting serverless function initialization (NO DB).');
+console.log('DEBUG_API_NO_DB: MONGO_URI:', process.env.MONGO_URI ? 'Defined' : 'Undefined');
+console.log('DEBUG_API_NO_DB: FRONTEND_URL:', process.env.FRONTEND_URL ? 'Defined' : 'Undefined');
+// --- AKHIR DEBUGGING LOG ---
 
-// Inisialisasi aplikasi Express
+// Hapus sementara:
+// const connectDB = require('../src/config/db');
+// connectDB();
+// console.log('DEBUG_API_NO_DB: Database connection initiated.');
+
+// Buat aplikasi Express langsung di sini (versi minimal)
 const app = express();
 
-// Middleware untuk parsing body JSON dari permintaan HTTP
-app.use(express.json());
+// Middleware dasar
+app.use(express.json()); // Tetap pakai ini untuk parsing body
+app.use(require('cors')()); // Gunakan cors langsung di sini untuk kesederhanaan
 
-// Konfigurasi CORS (Cross-Origin Resource Sharing)
-// Ini sangat penting agar frontend Anda bisa berkomunikasi dengan backend
-const corsOptions = {
-    // 'origin' akan membaca dari Environment Variable yang diatur di Vercel
-    // process.env.FRONTEND_URL harus diisi dengan URL frontend Vercel Anda (misal: https://nama-aplikasi-frontend.vercel.app)
-    // Jika belum tahu URL frontend, bisa pakai '*' untuk development, TAPI JANGAN UNTUK PRODUKSI.
-    origin: process.env.FRONTEND_URL || '*',
-    optionsSuccessStatus: 200 // Beberapa browser lawas memerlukan ini
-};
-app.use(cors(corsOptions));
+console.log('DEBUG_API_NO_DB: Express app initialized and basic middleware added.'); // <-- Log ini
 
-// Definisi Rute API
-// Mengaitkan rute-rute Anda dengan aplikasi Express
-// PASTIKAN PATH DASARNYA SESUAI DENGAN YANG DIHARAPKAN FRONTEND (misal: /api/auth)
-app.use('/api/auth', authRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/categories', categoryRoutes);
-
-// Rute dasar untuk pengujian API (opsional, tapi bagus untuk verifikasi)
-app.get('/api', (req, res) => { // Menggunakan /api sebagai path dasar
-    res.send('API Pembukuan Bulanan Berjalan di Vercel!');
+// Rute dasar yang akan merespons
+app.get('/api', (req, res) => {
+    console.log('DEBUG_API_NO_DB: /api route hit.');
+    res.send('Minimal API is running on Vercel (NO DB)!');
 });
 
-// Middleware penanganan rute tidak ditemukan (404)
+// Middleware penanganan 404
 app.use((req, res, next) => {
-    res.status(404).json({ message: 'Rute API tidak ditemukan.' });
+    console.log('DEBUG_API_NO_DB: 404 route hit for:', req.originalUrl);
+    res.status(404).send('Not Found (Minimal Vercel NO DB)');
 });
 
 // Middleware penanganan error global
-// Ini akan menangkap error yang terjadi di aplikasi Express Anda
 app.use((err, req, res, next) => {
-    console.error(err.stack); // Log stack trace error ke konsol Vercel
-    res.status(500).json({ message: 'Terjadi kesalahan server internal.', error: err.message });
+    console.error('DEBUG_API_NO_DB: Global error handler caught:', err.message);
+    res.status(500).send('Internal Server Error (Minimal Vercel NO DB)');
 });
 
 // Mengekspor aplikasi Express yang dibungkus sebagai fungsi serverless
-// Vercel akan memanggil fungsi ini saat ada permintaan ke endpoint API
 module.exports = serverless(app);
+console.log('DEBUG_API_NO_DB: Serverless handler exported.'); // <-- Log ini
