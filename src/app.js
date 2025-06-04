@@ -1,35 +1,31 @@
-const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const authRoutes = require('./routes/authRoutes');
-const transactionRoutes = require('./routes/transactionRoutes');
-const categoryRoutes = require('./routes/categoryRoutes');
+// backend/src/app.js (VERSI SANGAT SANGAT MINIMAL UNTUK DEBUGGING VERCEL TIMEOUT)
 
-dotenv.config();
+const express = require('express');
+// const dotenv = require('dotenv'); // Hapus sementara
+// const cors = require('cors');     // Hapus sementara
+
+// dotenv.config(); // Hapus sementara
 
 const app = express();
-app.use(express.json());
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  optionsSuccessStatus: 200,
-}));
+console.log('DEBUG_APP_MINIMAL_VERCEL: Express app initialized.'); // <-- Log ini
 
-app.use('/api/auth', authRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/categories', categoryRoutes);
-
-app.get('/', (req, res) => {
-  res.send('API Pembukuan Berjalan!');
+// Rute dasar yang akan merespons
+app.get('/api', (req, res) => {
+    console.log('DEBUG_APP_MINIMAL_VERCEL: /api route hit.');
+    res.send('Minimal API is running on Vercel!');
 });
 
+// Middleware penanganan 404
 app.use((req, res, next) => {
-  res.status(404).json({ message: 'Rute tidak ditemukan.' });
+    console.log('DEBUG_APP_MINIMAL_VERCEL: 404 route hit for:', req.originalUrl);
+    res.status(404).send('Not Found (Minimal Vercel)');
 });
 
+// Middleware penanganan error global
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Server error', error: err.message });
+    console.error('DEBUG_APP_MINIMAL_VERCEL: Global error handler caught:', err.message);
+    res.status(500).send('Internal Server Error (Minimal Vercel)');
 });
 
 module.exports = app;
