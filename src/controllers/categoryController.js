@@ -1,12 +1,17 @@
-const Category = require('../models/Category');
-const Transaction = require('../models/Transaction');
+const supabase = require('../config/db');
 
 // @desc    Mendapatkan semua kategori untuk pengguna yang terautentikasi
 // @route   GET /api/categories
 // @access  Private
 const getCategories = async (req, res) => {
     try {
-        const categories = await Category.find({ user: req.user._id }).sort({ name: 1 });
+        const { data: categories, error } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('user_id', req.user.id)
+            .order('name', { ascending: true });
+
+        if (error) throw error;
         res.json(categories);
     } catch (error) {
         console.error('Error fetching categories:', error.message);
@@ -25,18 +30,26 @@ const addCategory = async (req, res) => {
     }
 
     try {
-        const newCategory = new Category({
-            user: req.user._id,
-            name,
-            type,
-        });
+        const { data: existingCategory } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('user_id', req.user.id)
+            .eq('name', name)
+            .single();
 
-        const savedCategory = await newCategory.save();
-        res.status(201).json(savedCategory);
-    } catch (error) {
-        if (error.code === 11000) {
+        if (existingCategory) {
             return res.status(400).json({ message: 'Anda sudah memiliki kategori dengan nama ini.' });
         }
+
+        const { data: savedCategory, error } = await supabase
+            .from('categories')
+            .insert([{ user_id: req.user.id, name, type }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        res.status(201).json(savedCategory);
+    } catch (error) {
         console.error('Error adding category:', error.message);
         res.status(500).json({ message: 'Server error' });
     }
@@ -54,25 +67,42 @@ const updateCategory = async (req, res) => {
     }
 
     try {
-        let category = await Category.findById(id);
+        const { data: category, error: findError } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-        if (!category) {
+        if (findError || !category) {
             return res.status(404).json({ message: 'Kategori tidak ditemukan.' });
         }
 
-        if (category.user.toString() !== req.user._id.toString()) {
+        if (category.user_id !== req.user.id) {
             return res.status(401).json({ message: 'Tidak diizinkan untuk mengubah kategori ini.' });
         }
 
-        category.name = name;
-        category.type = type;
+        const { data: existingCategory } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('user_id', req.user.id)
+            .eq('name', name)
+            .neq('id', id)
+            .single();
 
-        const updatedCategory = await category.save();
-        res.json(updatedCategory);
-    } catch (error) {
-        if (error.code === 11000) {
+        if (existingCategory) {
             return res.status(400).json({ message: 'Anda sudah memiliki kategori lain dengan nama ini.' });
         }
+
+        const { data: updatedCategory, error: updateError } = await supabase
+            .from('categories')
+            .update({ name, type })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+        res.json(updatedCategory);
+    } catch (error) {
         console.error('Error updating category:', error.message);
         res.status(500).json({ message: 'Server error' });
     }
@@ -85,22 +115,37 @@ const deleteCategory = async (req, res) => {
     const { id } = req.params;
 
     try {
-        const category = await Category.findById(id);
+        const { data: category, error: findError } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-        if (!category) {
+        if (findError || !category) {
             return res.status(404).json({ message: 'Kategori tidak ditemukan.' });
         }
 
-        if (category.user.toString() !== req.user._id.toString()) {
+        if (category.user_id !== req.user.id) {
             return res.status(401).json({ message: 'Tidak diizinkan untuk menghapus kategori ini.' });
         }
 
-        const transactionCount = await Transaction.countDocuments({ category: id });
-        if (transactionCount > 0) {
+        const { count, error: countError } = await supabase
+            .from('transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('category_id', id);
+
+        if (countError) throw countError;
+
+        if (count > 0) {
             return res.status(400).json({ message: 'Tidak dapat menghapus kategori karena ada transaksi yang terkait.' });
         }
 
-        await Category.deleteOne({ _id: id });
+        const { error: deleteError } = await supabase
+            .from('categories')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) throw deleteError;
         res.json({ message: 'Kategori berhasil dihapus.' });
     } catch (error) {
         console.error('Error deleting category:', error.message);

@@ -1,15 +1,29 @@
-const Transaction = require('../models/Transaction');
-const Category = require('../models/Category');
+const supabase = require('../config/db');
 
 // @desc    Mendapatkan semua transaksi untuk pengguna tertentu
 // @route   GET /api/transactions
 // @access  Private
 const getTransactions = async (req, res) => {
     try {
-        const transactions = await Transaction.find({ user: req.user._id })
-            .populate('category', 'name type')
-            .sort({ date: -1, createdAt: -1 });
-        res.json(transactions);
+        const { data: transactions, error } = await supabase
+            .from('transactions')
+            .select(`
+                *,
+                categories:category_id (name, type)
+            `)
+            .eq('user_id', req.user.id)
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        
+        // Sesuaikan bentuk data jika frontend membutuhkan struktur yang sama
+        const formattedTransactions = transactions.map(t => ({
+            ...t,
+            category: t.categories
+        }));
+        
+        res.json(formattedTransactions);
     } catch (error) {
         console.error('Error fetching transactions:', error.message);
         res.status(500).json({ message: 'Server error' });
@@ -31,23 +45,40 @@ const addTransaction = async (req, res) => {
     }
 
     try {
-        const existingCategory = await Category.findOne({ _id: category, user: req.user._id, type: type });
+        const { data: existingCategory } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('id', category)
+            .eq('user_id', req.user.id)
+            .eq('type', type)
+            .single();
+
         if (!existingCategory) {
             return res.status(400).json({ message: 'Kategori tidak valid atau bukan milik Anda untuk jenis transaksi ini.' });
         }
 
-        const newTransaction = new Transaction({
-            user: req.user._id,
-            type,
-            amount: parseFloat(amount),
-            description,
-            category,
-            date: new Date(date),
-        });
+        const { data: savedTransaction, error } = await supabase
+            .from('transactions')
+            .insert([{
+                user_id: req.user.id,
+                type,
+                amount: parseFloat(amount),
+                description,
+                category_id: category,
+                date: new Date(date).toISOString(),
+            }])
+            .select(`
+                *,
+                categories:category_id (name, type)
+            `)
+            .single();
 
-        const savedTransaction = await newTransaction.save();
-        await savedTransaction.populate('category', 'name type');
-        res.status(201).json(savedTransaction);
+        if (error) throw error;
+        
+        res.status(201).json({
+            ...savedTransaction,
+            category: savedTransaction.categories
+        });
     } catch (error) {
         console.error('Error adding transaction:', error.message);
         res.status(500).json({ message: 'Server error' });
@@ -62,13 +93,17 @@ const updateTransaction = async (req, res) => {
     const { type, amount, description, category, date } = req.body;
 
     try {
-        let transaction = await Transaction.findById(id);
+        const { data: transaction, error: findError } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-        if (!transaction) {
+        if (findError || !transaction) {
             return res.status(404).json({ message: 'Transaksi tidak ditemukan.' });
         }
 
-        if (transaction.user.toString() !== req.user._id.toString()) {
+        if (transaction.user_id !== req.user.id) {
             return res.status(401).json({ message: 'Tidak diizinkan untuk mengubah transaksi ini.' });
         }
 
@@ -79,20 +114,40 @@ const updateTransaction = async (req, res) => {
             return res.status(400).json({ message: 'Jumlah harus angka positif.' });
         }
 
-        const existingCategory = await Category.findOne({ _id: category, user: req.user._id, type: type });
+        const { data: existingCategory } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('id', category)
+            .eq('user_id', req.user.id)
+            .eq('type', type)
+            .single();
+
         if (!existingCategory) {
             return res.status(400).json({ message: 'Kategori tidak valid atau bukan milik Anda untuk jenis transaksi ini.' });
         }
 
-        transaction.type = type;
-        transaction.amount = parseFloat(amount);
-        transaction.description = description;
-        transaction.category = category;
-        transaction.date = new Date(date);
+        const { data: updatedTransaction, error: updateError } = await supabase
+            .from('transactions')
+            .update({
+                type,
+                amount: parseFloat(amount),
+                description,
+                category_id: category,
+                date: new Date(date).toISOString(),
+            })
+            .eq('id', id)
+            .select(`
+                *,
+                categories:category_id (name, type)
+            `)
+            .single();
 
-        const updatedTransaction = await transaction.save();
-        await updatedTransaction.populate('category', 'name type');
-        res.json(updatedTransaction);
+        if (updateError) throw updateError;
+        
+        res.json({
+            ...updatedTransaction,
+            category: updatedTransaction.categories
+        });
     } catch (error) {
         console.error('Error updating transaction:', error.message);
         res.status(500).json({ message: 'Server error' });
@@ -106,17 +161,27 @@ const deleteTransaction = async (req, res) => {
     const { id } = req.params;
 
     try {
-        const transaction = await Transaction.findById(id);
+        const { data: transaction, error: findError } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-        if (!transaction) {
+        if (findError || !transaction) {
             return res.status(404).json({ message: 'Transaksi tidak ditemukan.' });
         }
 
-        if (transaction.user.toString() !== req.user._id.toString()) {
+        if (transaction.user_id !== req.user.id) {
             return res.status(401).json({ message: 'Tidak diizinkan untuk menghapus transaksi ini.' });
         }
 
-        await Transaction.deleteOne({ _id: id });
+        const { error: deleteError } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) throw deleteError;
+        
         res.json({ message: 'Transaksi berhasil dihapus.' });
     } catch (error) {
         console.error('Error deleting transaction:', error.message);
@@ -135,13 +200,17 @@ const getMonthlySummary = async (req, res) => {
             return res.status(400).json({ message: 'Tahun dan bulan diperlukan untuk ringkasan.' });
         }
 
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0);
+        const startDate = new Date(year, month - 1, 1).toISOString();
+        const endDate = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
 
-        const transactions = await Transaction.find({
-            user: req.user._id,
-            date: { $gte: startDate, $lte: endDate }
-        });
+        const { data: transactions, error } = await supabase
+            .from('transactions')
+            .select('type, amount')
+            .eq('user_id', req.user.id)
+            .gte('date', startDate)
+            .lte('date', endDate);
+
+        if (error) throw error;
 
         let totalIncome = 0;
         let totalExpense = 0;

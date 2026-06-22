@@ -1,31 +1,51 @@
-// backend/src/app.js (VERSI SANGAT SANGAT MINIMAL UNTUK DEBUGGING VERCEL TIMEOUT)
-
 const express = require('express');
-// const dotenv = require('dotenv'); // Hapus sementara
-// const cors = require('cors');     // Hapus sementara
+const dotenv = require('dotenv');
+const cors = require('cors');
 
-// dotenv.config(); // Hapus sementara
+// Muat variabel lingkungan
+dotenv.config();
+
+// Hubungkan ke Database MongoDB
+// Supabase client diinisialisasi di ./config/db.js dan akan di-import saat dibutuhkan.
 
 const app = express();
 
-console.log('DEBUG_APP_MINIMAL_VERCEL: Express app initialized.'); // <-- Log ini
+// Konfigurasi CORS
+app.use(cors({
+    origin: process.env.FRONTEND_URL || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// Rute dasar yang akan merespons
+// Middleware parsing JSON
+app.use(express.json());
+
+// Rute Dasar API
 app.get('/api', (req, res) => {
-    console.log('DEBUG_APP_MINIMAL_VERCEL: /api route hit.');
-    res.send('Minimal API is running on Vercel!');
+    res.send('API is running and integrated with Database!');
 });
 
+// Rute Autentikasi
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/categories', require('./routes/categoryRoutes'));
+app.use('/api/transactions', require('./routes/transactionRoutes'));
 // Middleware penanganan 404
 app.use((req, res, next) => {
-    console.log('DEBUG_APP_MINIMAL_VERCEL: 404 route hit for:', req.originalUrl);
-    res.status(404).send('Not Found (Minimal Vercel)');
+    res.status(404).send('Not Found');
 });
 
 // Middleware penanganan error global
 app.use((err, req, res, next) => {
-    console.error('DEBUG_APP_MINIMAL_VERCEL: Global error handler caught:', err.message);
-    res.status(500).send('Internal Server Error (Minimal Vercel)');
+    console.error('Global error handler caught:', err.message);
+    res.status(500).send('Internal Server Error');
 });
+
+// Jalankan server jika berjalan secara lokal (bukan di Vercel)
+if (!process.env.VERCEL) {
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+        console.log(`Server running locally on http://localhost:${PORT}`);
+    });
+}
 
 module.exports = app;

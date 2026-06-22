@@ -1,14 +1,14 @@
-const mongoose = require('mongoose');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (err) {
-    console.error(`Database connection error: ${err.message}`);
-    process.exit(1); // Exit with failure
-  }
-};
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
-module.exports = connectDB;
+if (!supabaseUrl || !supabaseKey) {
+    console.error('Supabase URL or Key is missing in environment variables.');
+    process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+module.exports = supabase;

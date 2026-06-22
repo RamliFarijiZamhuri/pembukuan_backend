@@ -1,10 +1,10 @@
+const supabase = require('../config/db');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-require('dotenv').config();
 
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: '1h', // Token berlaku selama 1 jam
+        expiresIn: '1h',
     });
 };
 
@@ -19,18 +19,38 @@ const registerUser = async (req, res) => {
     }
 
     try {
-        let user = await User.findOne({ $or: [{ email }, { username }] });
-        if (user) {
+        // Cek apakah email atau username sudah ada
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('*')
+            .or(`email.eq.${email},username.eq.${username}`)
+            .single();
+
+        if (existingUser) {
             return res.status(400).json({ message: 'Username atau email sudah terdaftar.' });
         }
 
-        user = await User.create({ username, email, password });
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Buat user baru di tabel users
+        const { data: newUser, error } = await supabase
+            .from('users')
+            .insert([{ username, email, password: hashedPassword }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Supabase Insert Error:', error);
+            return res.status(400).json({ message: 'Gagal membuat pengguna' });
+        }
 
         res.status(201).json({
-            _id: user._id,
-            username: user.username,
-            email: user.email,
-            token: generateToken(user._id),
+            id: newUser.id,
+            username: newUser.username,
+            email: newUser.email,
+            token: generateToken(newUser.id),
         });
     } catch (error) {
         console.error('Error saat pendaftaran:', error.message);
@@ -49,14 +69,19 @@ const loginUser = async (req, res) => {
     }
 
     try {
-        const user = await User.findOne({ email });
+        // Cari user berdasarkan email
+        const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .single();
 
-        if (user && (await user.matchPassword(password))) {
+        if (user && (await bcrypt.compare(password, user.password))) {
             res.json({
-                _id: user._id,
+                id: user.id,
                 username: user.username,
                 email: user.email,
-                token: generateToken(user._id),
+                token: generateToken(user.id),
             });
         } else {
             res.status(401).json({ message: 'Email atau password salah.' });
